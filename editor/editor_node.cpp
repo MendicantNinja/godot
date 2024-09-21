@@ -926,7 +926,11 @@ void EditorNode::_resources_changed(const Vector<String> &p_resources) {
 		}
 
 		if (!res->editor_can_reload_from_file()) {
-			continue;
+			Ref<Script> scr = res;
+			// Scripts are reloaded via the script editor.
+			if (scr.is_null() || ScriptEditor::get_singleton()->get_open_scripts().has(scr)) {
+				continue;
+			}
 		}
 		if (!res->get_path().is_resource_file() && !res->get_path().is_absolute_path()) {
 			continue;
@@ -4109,9 +4113,7 @@ Error EditorNode::load_scene(const String &p_scene, bool p_ignore_broken_deps, b
 
 	_update_title();
 	scene_tabs->update_scene_tabs();
-	if (!restoring_scenes) {
-		_add_to_recent_scenes(lpath);
-	}
+	_add_to_recent_scenes(lpath);
 
 	return OK;
 }
@@ -4952,10 +4954,8 @@ String EditorNode::_get_system_info() const {
 		godot_version += " " + hash;
 	}
 
-	String display_session_type;
 #ifdef LINUXBSD_ENABLED
-	// `replace` is necessary, because `capitalize` introduces a whitespace between "x" and "11".
-	display_session_type = OS::get_singleton()->get_environment("XDG_SESSION_TYPE").capitalize().replace(" ", "");
+	const String display_server = OS::get_singleton()->get_environment("XDG_SESSION_TYPE").capitalize().replace(" ", ""); // `replace` is necessary, because `capitalize` introduces a whitespace between "x" and "11".
 #endif // LINUXBSD_ENABLED
 	String driver_name = OS::get_singleton()->get_current_rendering_driver_name().to_lower();
 	String rendering_method = OS::get_singleton()->get_current_rendering_method().to_lower();
@@ -5016,33 +5016,16 @@ String EditorNode::_get_system_info() const {
 	// Join info.
 	Vector<String> info;
 	info.push_back(godot_version);
-	String distribution_display_session_type = distribution_name;
 	if (!distribution_version.is_empty()) {
-		distribution_display_session_type += " " + distribution_version;
-	}
-	if (!display_session_type.is_empty()) {
-		distribution_display_session_type += " on " + display_session_type;
-	}
-	info.push_back(distribution_display_session_type);
-
-	String display_driver_window_mode;
-#ifdef LINUXBSD_ENABLED
-	// `replace` is necessary, because `capitalize` introduces a whitespace between "x" and "11".
-	display_driver_window_mode = DisplayServer::get_singleton()->get_name().capitalize().replace(" ", "") + " display driver";
-#endif // LINUXBSD_ENABLED
-	if (!display_driver_window_mode.is_empty()) {
-		display_driver_window_mode += ", ";
-	}
-	display_driver_window_mode += get_viewport()->is_embedding_subwindows() ? "Single-window" : "Multi-window";
-
-	if (DisplayServer::get_singleton()->get_screen_count() == 1) {
-		display_driver_window_mode += ", " + itos(DisplayServer::get_singleton()->get_screen_count()) + " monitor";
+		info.push_back(distribution_name + " " + distribution_version);
 	} else {
-		display_driver_window_mode += ", " + itos(DisplayServer::get_singleton()->get_screen_count()) + " monitors";
+		info.push_back(distribution_name);
 	}
-
-	info.push_back(display_driver_window_mode);
-
+#ifdef LINUXBSD_ENABLED
+	if (!display_server.is_empty()) {
+		info.push_back(display_server);
+	}
+#endif // LINUXBSD_ENABLED
 	info.push_back(vformat("%s (%s)", driver_name, rendering_method));
 
 	String graphics;
@@ -5061,7 +5044,7 @@ String EditorNode::_get_system_info() const {
 	}
 	info.push_back(graphics);
 
-	info.push_back(vformat("%s (%d threads)", processor_name, processor_count));
+	info.push_back(vformat("%s (%d Threads)", processor_name, processor_count));
 
 	return String(" - ").join(info);
 }
@@ -5680,7 +5663,6 @@ Dictionary EditorNode::drag_resource(const Ref<Resource> &p_res, Control *p_from
 	Control *drag_control = memnew(Control);
 	TextureRect *drag_preview = memnew(TextureRect);
 	Label *label = memnew(Label);
-	label->set_auto_translate_mode(AUTO_TRANSLATE_MODE_DISABLED);
 
 	Ref<Texture2D> preview;
 
@@ -5733,7 +5715,6 @@ Dictionary EditorNode::drag_files_and_dirs(const Vector<String> &p_paths, Contro
 		HBoxContainer *hbox = memnew(HBoxContainer);
 		TextureRect *icon = memnew(TextureRect);
 		Label *label = memnew(Label);
-		label->set_auto_translate_mode(AUTO_TRANSLATE_MODE_DISABLED);
 
 		if (p_paths[i].ends_with("/")) {
 			label->set_text(p_paths[i].substr(0, p_paths[i].length() - 1).get_file());
@@ -6691,8 +6672,6 @@ int EditorNode::execute_and_show_output(const String &p_title, const String &p_p
 EditorNode::EditorNode() {
 	DEV_ASSERT(!singleton);
 	singleton = this;
-
-	set_translation_domain("godot.editor");
 
 	Resource::_get_local_scene_func = _resource_get_edited_scene;
 
@@ -7927,14 +7906,9 @@ EditorNode::EditorNode() {
 		title_bar->set_can_move_window(true);
 	}
 
-	{
-		const String exec = OS::get_singleton()->get_executable_path();
-		const String old_exec = EditorSettings::get_singleton()->get_project_metadata("editor_metadata", "executable_path", "");
-		// Save editor executable path for third-party tools.
-		if (exec != old_exec) {
-			EditorSettings::get_singleton()->set_project_metadata("editor_metadata", "executable_path", exec);
-		}
-	}
+	String exec = OS::get_singleton()->get_executable_path();
+	// Save editor executable path for third-party tools.
+	EditorSettings::get_singleton()->set_project_metadata("editor_metadata", "executable_path", exec);
 
 	follow_system_theme = EDITOR_GET("interface/theme/follow_system_theme");
 	use_system_accent_color = EDITOR_GET("interface/theme/use_system_accent_color");
