@@ -415,7 +415,7 @@ void TileMapLayerEditorTilesPlugin::_delete_pattern_set_menu_id_pressed(int p_id
 		int sel_pattern_set_index = metadata_dict["pattern_set"];
 
 		tile_set->remove_pattern_set(sel_pattern_set_index);
-		
+
 		_update_pattern_sets();
 		patterns_item_list->clear();
 	}
